@@ -5,6 +5,7 @@ const {
     ActionRowBuilder, 
     ButtonBuilder, 
     ButtonStyle, 
+    StringSelectMenuBuilder,
     ModalBuilder, 
     TextInputBuilder, 
     TextInputStyle, 
@@ -125,6 +126,29 @@ function createHwidResetPanel() {
     return { embeds: [embed], components: [row] };
 }
 
+// 3. Panel: Admin Key Creation (Admins Only)
+function createKeyGenPanel() {
+    const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('Key Creation')
+        .setDescription('Select the subscription duration below to generate a license key for a user (Admins Only).');
+
+    const select = new StringSelectMenuBuilder()
+        .setCustomId('select_keygen_duration')
+        .setPlaceholder('Choose Key Duration...')
+        .addOptions([
+            { label: '1 Day', description: 'Single day access (24 hours)', value: '1' },
+            { label: '3 Days', description: 'Three days access (72 hours)', value: '3' },
+            { label: '7 Days (1 Week)', description: 'One week access (168 hours)', value: '7' },
+            { label: '30 Days (1 Month)', description: 'One month access (30 days)', value: '30' },
+            { label: '90 Days (3 Months)', description: 'Three months access (90 days)', value: '90' },
+            { label: 'Lifetime', description: 'Permanent lifetime subscription', value: '0' }
+        ]);
+
+    const row = new ActionRowBuilder().addComponents(select);
+    return { embeds: [embed], components: [row] };
+}
+
 client.once('ready', async () => {
     console.log(`====================================================`);
     console.log(` Bot is online as: ${client.user.tag}`);
@@ -142,6 +166,10 @@ client.once('ready', async () => {
         new SlashCommandBuilder()
             .setName('setup-hwid')
             .setDescription('Post the HWID Reset Panel')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        new SlashCommandBuilder()
+            .setName('setup-keygen')
+            .setDescription('Post the Admin Key Creation Panel')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     ].map(cmd => cmd.toJSON());
 
@@ -203,6 +231,31 @@ client.once('ready', async () => {
                 await hwidChan.send(createHwidResetPanel());
                 console.log(`[Auto-Setup] HWID Reset panel verified in #${hwidChan.name}`);
             }
+
+            // Setup Admin Key Creation Channel (1565782988233384127)
+            const keygenChanId = config.admin_gen_channel_id || '1565782988233384127';
+            let keygenChan = guild.channels.cache.get(keygenChanId);
+            if (!keygenChan) {
+                keygenChan = guild.channels.cache.find(c => 
+                    c.isTextBased() && (
+                        c.name.toLowerCase().includes('create-key') ||
+                        c.name.toLowerCase().includes('generate-key') ||
+                        c.name.toLowerCase().includes('key-gen')
+                    )
+                );
+            }
+
+            if (keygenChan && keygenChan.isTextBased()) {
+                const messages = await keygenChan.messages.fetch({ limit: 10 }).catch(() => null);
+                if (messages) {
+                    const oldMessages = messages.filter(m => m.author.id === client.user.id && m.embeds[0]?.title === 'Key Creation');
+                    for (const [, oldMsg] of oldMessages) {
+                        await oldMsg.delete().catch(() => null);
+                    }
+                }
+                await keygenChan.send(createKeyGenPanel());
+                console.log(`[Auto-Setup] Key Creation panel verified in #${keygenChan.name} (${keygenChan.id})`);
+            }
         } catch (e) {
             console.error(`Error checking channels in guild ${guild.name}:`, e.message);
         }
@@ -225,6 +278,11 @@ client.on('interactionCreate', async interaction => {
         if (interaction.commandName === 'setup-hwid') {
             await interaction.reply({ content: 'Posting HWID reset panel...', ephemeral: true });
             await interaction.channel.send(createHwidResetPanel());
+            return;
+        }
+        if (interaction.commandName === 'setup-keygen') {
+            await interaction.reply({ content: 'Posting key creation panel...', ephemeral: true });
+            await interaction.channel.send(createKeyGenPanel());
             return;
         }
     }
@@ -435,6 +493,166 @@ client.on('interactionCreate', async interaction => {
             console.error('Error during HWID reset:', err);
             await interaction.editReply({
                 content: `An unexpected error occurred: ${err.message}`
+            });
+        }
+        return;
+    }
+
+    // 5. Select Menu: Key Creation Duration (Admins Only)
+    if (interaction.isStringSelectMenu() && interaction.customId === 'select_keygen_duration') {
+        const isOwner = interaction.user.id === '1415022792214052915';
+        const isAdmin = interaction.member && interaction.member.permissions && interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+        if (!isOwner && !isAdmin) {
+            return interaction.reply({
+                content: 'You do not have permission to generate license keys. (Admins only)',
+                ephemeral: true
+            });
+        }
+
+        const duration = interaction.values[0];
+        const durationMap = {
+            '1': '1 Day',
+            '3': '3 Days',
+            '7': '7 Days',
+            '30': '30 Days',
+            '90': '90 Days',
+            '0': 'Lifetime'
+        };
+        const durLabel = durationMap[duration] || `${duration} Days`;
+
+        const modal = new ModalBuilder()
+            .setCustomId(`modal_keygen_${duration}`)
+            .setTitle(`Key Creation - ${durLabel}`);
+
+        const userIdInput = new TextInputBuilder()
+            .setCustomId('input_target_user_id')
+            .setLabel('User ID')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Enter Discord User ID (e.g. 1415022792214052915)')
+            .setRequired(true)
+            .setMinLength(15)
+            .setMaxLength(25);
+
+        const defaultPrefix = duration === '0' ? 'LIFETIME' : (duration === '1' ? '1DAY' : (duration === '3' ? '3DAYS' : (duration === '7' ? 'WEEK' : 'VIP')));
+        const prefixInput = new TextInputBuilder()
+            .setCustomId('input_key_prefix')
+            .setLabel('Prefix')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Prefix for key (e.g. VIP, 3DAYS, KEY)')
+            .setValue(defaultPrefix)
+            .setRequired(false)
+            .setMaxLength(16);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(userIdInput),
+            new ActionRowBuilder().addComponents(prefixInput)
+        );
+
+        await interaction.showModal(modal);
+        return;
+    }
+
+    // 6. Modal Submit: Key Creation (DM to User)
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_keygen_')) {
+        await interaction.deferReply({ ephemeral: true });
+
+        const isOwner = interaction.user.id === '1415022792214052915';
+        const isAdmin = interaction.member && interaction.member.permissions && interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+        if (!isOwner && !isAdmin) {
+            return interaction.editReply({ content: 'Unauthorized.' });
+        }
+
+        const duration = interaction.customId.replace('modal_keygen_', '');
+        const targetUserId = interaction.fields.getTextInputValue('input_target_user_id').trim();
+        const rawPrefix = interaction.fields.getTextInputValue('input_key_prefix').trim();
+        const prefix = rawPrefix || 'VIP';
+
+        const durationMap = {
+            '1': '1 Day',
+            '3': '3 Days',
+            '7': '7 Days',
+            '30': '30 Days',
+            '90': '90 Days',
+            '0': 'Lifetime'
+        };
+        const durLabel = durationMap[duration] || `${duration} Days`;
+
+        let targetUser = null;
+        try {
+            targetUser = await client.users.fetch(targetUserId);
+        } catch (err) {
+            return interaction.editReply({
+                content: `Could not find a Discord user with ID \`${targetUserId}\`. Please verify the User ID and try again.`
+            });
+        }
+
+        try {
+            const apiEndpoint = config.generate_key_api_endpoint || 'https://larpifyy.asia/api/discord/generate-key';
+            const res = await fetch(apiEndpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    duration_days: parseInt(duration),
+                    prefix: prefix,
+                    admin_discord_id: interaction.user.id,
+                    target_discord_id: targetUserId
+                })
+            });
+
+            const data = await res.json();
+            if (!data.success) {
+                return interaction.editReply({
+                    content: `Failed to generate key: ${data.message || 'Server error'}`
+                });
+            }
+
+            const generatedKey = data.key;
+
+            // Formatted exactly like user's reference screenshot
+            const dmEmbed = new EmbedBuilder()
+                .setColor(0x2b2d31)
+                .setTitle('Your license')
+                .setDescription(
+                    `**Fortnite External** - ${durLabel}\n\n` +
+                    `\`\`\`\n${generatedKey}\n\`\`\``
+                );
+
+            let dmSent = true;
+            try {
+                await targetUser.send({ embeds: [dmEmbed] });
+            } catch (dmErr) {
+                dmSent = false;
+            }
+
+            if (dmSent) {
+                const adminEmbed = new EmbedBuilder()
+                    .setColor(0x57F287)
+                    .setTitle('License Key Generated & Delivered')
+                    .setDescription(
+                        `Successfully generated key and delivered to <@${targetUser.id}> in DMs.\n\n` +
+                        `**User:** <@${targetUser.id}> (\`${targetUser.id}\`)\n` +
+                        `**Product:** Fortnite External - ${durLabel}\n` +
+                        `**Key:** \`${generatedKey}\``
+                    );
+                return interaction.editReply({ embeds: [adminEmbed] });
+            } else {
+                const adminEmbed = new EmbedBuilder()
+                    .setColor(0xFEE75C)
+                    .setTitle('License Key Generated (DMs Closed)')
+                    .setDescription(
+                        `Key generated in database, but could not DM <@${targetUser.id}> (DMs closed or blocked).\n\n` +
+                        `**User:** <@${targetUser.id}> (\`${targetUser.id}\`)\n` +
+                        `**Product:** Fortnite External - ${durLabel}\n` +
+                        `**Key:** \`${generatedKey}\`\n\n` +
+                        `Please send the key to the user manually.`
+                    );
+                return interaction.editReply({ embeds: [adminEmbed] });
+            }
+
+        } catch (err) {
+            console.error('Error generating key:', err);
+            return interaction.editReply({
+                content: `Error generating key: ${err.message}`
             });
         }
     }

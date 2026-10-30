@@ -7,6 +7,8 @@
   "channel_id": "1565735671304294450",
   "channel_name": "get-role",
   "hwid_channel_id": "1565745363065897111",
+  "admin_gen_channel_id": "1565782988233384127",
   "api_endpoint": "https://larpifyy.asia/api/discord/redeem",
-  "hwid_api_endpoint": "https://larpifyy.asia/api/discord/hwid-reset"
+  "hwid_api_endpoint": "https://larpifyy.asia/api/discord/hwid-reset",
+  "generate_key_api_endpoint": "https://larpifyy.asia/api/discord/generate-key"
 }
