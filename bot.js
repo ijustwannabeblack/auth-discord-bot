@@ -113,12 +113,7 @@ function createHwidResetPanel() {
     const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle('HWID Reset')
-        .setDescription(
-            'Click the button below to reset your HWID.\n\n' +
-            '• You can reset your HWID once every 24 hours.\n' +
-            '• You must provide a valid reason.\n' +
-            '• Submitting false or invalid reasons may result in your key being banned.'
-        );
+        .setDescription('Click the button below to reset your HWID, you can reset your HWID every 24 Hours.');
 
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -432,11 +427,7 @@ client.on('interactionCreate', async interaction => {
             const successEmbed = new EmbedBuilder()
                 .setColor(0x57F287)
                 .setTitle('HWID Reset Successful')
-                .setDescription(
-                    'Your HWID has been reset. You can now launch the loader on your new hardware.\n\n' +
-                    '• Next reset available in 24 hours.\n' +
-                    `• Key: \`${data.key}\``
-                );
+                .setDescription('Your HWID has been reset. You can now launch the loader on your new hardware.');
 
             await interaction.editReply({ embeds: [successEmbed] });
 
