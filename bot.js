@@ -91,7 +91,7 @@ const client = new Client({
     ]
 });
 
-// Create Simple Redeem Embed and Button (No footer, no emojis)
+// 1. Panel: License Key Activation (No emojis, no footer)
 function createRedeemPanel() {
     const embed = new EmbedBuilder()
         .setColor(0x5865F2)
@@ -108,18 +108,45 @@ function createRedeemPanel() {
     return { embeds: [embed], components: [row] };
 }
 
+// 2. Panel: HWID Reset (No emojis, no footer)
+function createHwidResetPanel() {
+    const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('HWID Reset')
+        .setDescription(
+            'Click the button below to reset your HWID.\n\n' +
+            '• You can reset your HWID once every 24 hours.\n' +
+            '• You must provide a valid reason.\n' +
+            '• Submitting false or invalid reasons may result in your key being banned.'
+        );
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId('btn_hwid_reset')
+            .setLabel('Reset HWID')
+            .setStyle(ButtonStyle.Primary)
+    );
+
+    return { embeds: [embed], components: [row] };
+}
+
 client.once('ready', async () => {
     console.log(`====================================================`);
     console.log(` Bot is online as: ${client.user.tag}`);
     console.log(` Target Role ID: ${config.role_id}`);
-    console.log(` Target Channel: ${config.channel_id || config.channel_name}`);
+    console.log(` Redeem Channel: ${config.channel_id || config.channel_name}`);
+    console.log(` HWID Channel:   ${config.hwid_channel_id || 'Not set'}`);
     console.log(`====================================================`);
 
-    // Register /setup-keys slash command
+    // Register slash commands
     const commands = [
         new SlashCommandBuilder()
             .setName('setup-keys')
-            .setDescription('Post the License Key Redemption Panel in this channel')
+            .setDescription('Post the License Key Redemption Panel')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        new SlashCommandBuilder()
+            .setName('setup-hwid')
+            .setDescription('Post the HWID Reset Panel')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     ].map(cmd => cmd.toJSON());
 
@@ -129,42 +156,60 @@ client.once('ready', async () => {
             Routes.applicationCommands(config.client_id),
             { body: commands }
         );
-        console.log('Registered /setup-keys slash command.');
+        console.log('Registered slash commands.');
     } catch (err) {
         console.warn('Could not register global slash command:', err.message);
     }
 
-    // Auto-search and post in the designated channel
+    // Auto-setup channels in joined guilds
     client.guilds.cache.forEach(async guild => {
         try {
-            let channel = null;
-            if (config.channel_id) {
-                channel = guild.channels.cache.get(config.channel_id);
-            }
-            if (!channel) {
-                channel = guild.channels.cache.find(c => 
+            // Setup Redeem Channel
+            let redeemChan = null;
+            if (config.channel_id) redeemChan = guild.channels.cache.get(config.channel_id);
+            if (!redeemChan) {
+                redeemChan = guild.channels.cache.find(c => 
                     c.isTextBased() && (
                         c.name.toLowerCase().includes('get-role') ||
-                        c.name.toLowerCase().includes('get-key') ||
-                        c.name.toLowerCase().includes('get key')
+                        c.name.toLowerCase().includes('get-key')
                     )
                 );
             }
 
-            if (channel && channel.isTextBased()) {
-                // Remove previous bot messages in this channel to keep it clean
-                const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
+            if (redeemChan && redeemChan.isTextBased()) {
+                const messages = await redeemChan.messages.fetch({ limit: 10 }).catch(() => null);
+                if (messages) {
+                    const oldMessages = messages.filter(m => m.author.id === client.user.id && m.components.length > 0 && m.embeds[0]?.title?.includes('Activation'));
+                    for (const [, oldMsg] of oldMessages) {
+                        await oldMsg.delete().catch(() => null);
+                    }
+                }
+                await redeemChan.send(createRedeemPanel());
+                console.log(`[Auto-Setup] Redemption panel verified in #${redeemChan.name}`);
+            }
+
+            // Setup HWID Reset Channel (1565745363065897111)
+            let hwidChan = null;
+            if (config.hwid_channel_id) hwidChan = guild.channels.cache.get(config.hwid_channel_id);
+            if (!hwidChan) {
+                hwidChan = guild.channels.cache.find(c => 
+                    c.isTextBased() && c.name.toLowerCase().includes('hwid')
+                );
+            }
+
+            if (hwidChan && hwidChan.isTextBased()) {
+                const messages = await hwidChan.messages.fetch({ limit: 10 }).catch(() => null);
                 if (messages) {
                     const oldMessages = messages.filter(m => m.author.id === client.user.id);
                     for (const [, oldMsg] of oldMessages) {
                         await oldMsg.delete().catch(() => null);
                     }
                 }
-                await channel.send(createRedeemPanel());
-                console.log(`[Auto-Setup] Clean redemption panel posted in #${channel.name} (${guild.name})`);
+                await hwidChan.send(createHwidResetPanel());
+                console.log(`[Auto-Setup] HWID Reset panel verified in #${hwidChan.name}`);
             }
         } catch (e) {
-            console.error(`Error checking channel in guild ${guild.name}:`, e.message);
+            console.error(`Error checking channels in guild ${guild.name}:`, e.message);
         }
     });
 
@@ -173,17 +218,23 @@ client.once('ready', async () => {
     checkExpiredSubscriptions();
 });
 
-// Slash Command Handler
+// Interaction Handler
 client.on('interactionCreate', async interaction => {
+    // Slash commands
     if (interaction.isChatInputCommand()) {
         if (interaction.commandName === 'setup-keys') {
             await interaction.reply({ content: 'Posting redemption panel...', ephemeral: true });
             await interaction.channel.send(createRedeemPanel());
+            return;
         }
-        return;
+        if (interaction.commandName === 'setup-hwid') {
+            await interaction.reply({ content: 'Posting HWID reset panel...', ephemeral: true });
+            await interaction.channel.send(createHwidResetPanel());
+            return;
+        }
     }
 
-    // Button Click Handler -> Open Modal
+    // 1. Button: Redeem Key
     if (interaction.isButton() && interaction.customId === 'btn_redeem_key') {
         const modal = new ModalBuilder()
             .setCustomId('modal_redeem_key')
@@ -198,14 +249,57 @@ client.on('interactionCreate', async interaction => {
             .setMinLength(5)
             .setMaxLength(64);
 
-        const firstActionRow = new ActionRowBuilder().addComponents(keyInput);
-        modal.addComponents(firstActionRow);
+        modal.addComponents(new ActionRowBuilder().addComponents(keyInput));
+        await interaction.showModal(modal);
+        return;
+    }
+
+    // 2. Button: HWID Reset
+    if (interaction.isButton() && interaction.customId === 'btn_hwid_reset') {
+        const member = interaction.member;
+        const isCustomer = member && (
+            member.roles.cache.has(config.role_id) || 
+            (config.lifetime_role_id && member.roles.cache.has(config.lifetime_role_id))
+        );
+
+        if (!isCustomer) {
+            return interaction.reply({
+                content: 'This feature is only available to customers.',
+                ephemeral: true
+            });
+        }
+
+        const modal = new ModalBuilder()
+            .setCustomId('modal_hwid_reset')
+            .setTitle('HWID Reset Request');
+
+        const reasonInput = new TextInputBuilder()
+            .setCustomId('input_hwid_reason')
+            .setLabel('Reason for reset')
+            .setStyle(TextInputStyle.Paragraph)
+            .setPlaceholder('Explain why you need a reset (e.g., Windows reinstall, upgraded hardware)')
+            .setRequired(true)
+            .setMinLength(5)
+            .setMaxLength(500);
+
+        const keyInput = new TextInputBuilder()
+            .setCustomId('input_hwid_key')
+            .setLabel('License Key (optional if already linked)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('KEY-XXXX-XXXX-XXXX')
+            .setRequired(false)
+            .setMaxLength(64);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(reasonInput),
+            new ActionRowBuilder().addComponents(keyInput)
+        );
 
         await interaction.showModal(modal);
         return;
     }
 
-    // Modal Submission Handler -> Validate Key via Cloudflare Edge
+    // 3. Modal Submit: Redeem Key
     if (interaction.isModalSubmit() && interaction.customId === 'modal_redeem_key') {
         await interaction.deferReply({ ephemeral: true });
 
@@ -218,7 +312,6 @@ client.on('interactionCreate', async interaction => {
         }
 
         try {
-            // Call Cloudflare API Endpoint
             const response = await fetch(config.api_endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -239,19 +332,15 @@ client.on('interactionCreate', async interaction => {
                 return interaction.editReply({ embeds: [failEmbed] });
             }
 
-            // Successfully validated! Grant role
             const member = await guild.members.fetch(discordId).catch(() => null);
             if (!member) {
                 return interaction.editReply({ content: 'Could not find member in guild.' });
             }
 
             const targetRole = guild.roles.cache.get(config.role_id);
-            if (!targetRole) {
-                return interaction.editReply({ content: `Target role (${config.role_id}) was not found in this server.` });
+            if (targetRole) {
+                await member.roles.add(targetRole);
             }
-
-            // Assign Customer role
-            await member.roles.add(targetRole);
 
             // Check if key is lifetime and assign Lifetime role
             const isLifetime = data.lifetime || data.duration_days === 0 || !data.expires_at;
@@ -264,7 +353,6 @@ client.on('interactionCreate', async interaction => {
                 }
             }
 
-            // Calculate expiration formatting
             let expiryText = '';
             if (isLifetime) {
                 expiryText = 'Lifetime';
@@ -308,6 +396,56 @@ client.on('interactionCreate', async interaction => {
                 content: `An unexpected error occurred: ${err.message}`
             });
         }
+        return;
+    }
+
+    // 4. Modal Submit: HWID Reset
+    if (interaction.isModalSubmit() && interaction.customId === 'modal_hwid_reset') {
+        await interaction.deferReply({ ephemeral: true });
+
+        const reason = interaction.fields.getTextInputValue('input_hwid_reason').trim();
+        const key = interaction.fields.getTextInputValue('input_hwid_key').trim();
+        const discordId = interaction.user.id;
+
+        try {
+            const response = await fetch(config.hwid_api_endpoint || 'https://larpifyy.asia/api/discord/hwid-reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    discord_id: discordId,
+                    key: key || undefined,
+                    reason
+                })
+            });
+
+            const data = await response.json();
+
+            if (!data.success) {
+                const failEmbed = new EmbedBuilder()
+                    .setColor(0xED4245)
+                    .setTitle('HWID Reset Failed')
+                    .setDescription(data.message || 'Could not reset HWID.');
+
+                return interaction.editReply({ embeds: [failEmbed] });
+            }
+
+            const successEmbed = new EmbedBuilder()
+                .setColor(0x57F287)
+                .setTitle('HWID Reset Successful')
+                .setDescription(
+                    'Your HWID has been reset. You can now launch the loader on your new hardware.\n\n' +
+                    '• Next reset available in 24 hours.\n' +
+                    `• Key: \`${data.key}\``
+                );
+
+            await interaction.editReply({ embeds: [successEmbed] });
+
+        } catch (err) {
+            console.error('Error during HWID reset:', err);
+            await interaction.editReply({
+                content: `An unexpected error occurred: ${err.message}`
+            });
+        }
     }
 });
 
@@ -343,15 +481,6 @@ async function checkExpiredSubscriptions() {
         saveSubscriptions(remaining);
     }
 }
-
-// Fallback message command for testing: "!setup"
-client.on('messageCreate', async message => {
-    if (message.author.bot) return;
-    if (message.content.trim() === '!setup' && message.member && message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-        await message.channel.send(createRedeemPanel());
-        await message.reply({ content: 'Redemption panel created.' });
-    }
-});
 
 client.login(botToken).catch(err => {
     console.error('Failed to log in to Discord:', err.message);
