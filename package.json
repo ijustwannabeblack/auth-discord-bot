@@ -1,0 +1,12 @@
+{
+  "name": "auth-discord-bot",
+  "version": "1.0.0",
+  "description": "Discord Bot for automatic role assignment upon key activation",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.17.3"
+  }
+}
