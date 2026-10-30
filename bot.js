@@ -126,12 +126,12 @@ function createHwidResetPanel() {
     return { embeds: [embed], components: [row] };
 }
 
-// 3. Panel: Admin Key Creation (Admins Only)
+// 3. Panel: Key Creation
 function createKeyGenPanel() {
     const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle('Key Creation')
-        .setDescription('Select the subscription duration below to generate a license key for a user (Admins Only).');
+        .setDescription('Select the subscription duration below to generate a license key for a user.');
 
     const select = new StringSelectMenuBuilder()
         .setCustomId('select_keygen_duration')
@@ -147,6 +147,19 @@ function createKeyGenPanel() {
 
     const row = new ActionRowBuilder().addComponents(select);
     return { embeds: [embed], components: [row] };
+}
+
+function hasKeygenPermission(interaction) {
+    const KEYGEN_ROLE_ID = config.keygen_role_id || '1565785004922110032';
+    if (interaction.user.id === '1415022792214052915') return true;
+    if (!interaction.member) return false;
+    if (interaction.member.roles?.cache) {
+        return interaction.member.roles.cache.has(KEYGEN_ROLE_ID);
+    }
+    if (Array.isArray(interaction.member.roles)) {
+        return interaction.member.roles.includes(KEYGEN_ROLE_ID);
+    }
+    return false;
 }
 
 client.once('ready', async () => {
@@ -498,13 +511,13 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // 5. Select Menu: Key Creation Duration (Admins Only)
+    // 5. Select Menu: Key Creation Duration (Role 1565785004922110032 Only)
     if (interaction.isStringSelectMenu() && interaction.customId === 'select_keygen_duration') {
-        const isOwner = interaction.user.id === '1415022792214052915';
-        const isAdmin = interaction.member && interaction.member.permissions && interaction.member.permissions.has(PermissionFlagsBits.Administrator);
-        if (!isOwner && !isAdmin) {
+        const KEYGEN_ROLE_ID = config.keygen_role_id || '1565785004922110032';
+        if (!hasKeygenPermission(interaction)) {
+            await interaction.message.edit(createKeyGenPanel()).catch(() => {});
             return interaction.reply({
-                content: 'You do not have permission to generate license keys. (Admins only)',
+                content: `You do not have permission to generate license keys. Requires <@&${KEYGEN_ROLE_ID}>.`,
                 ephemeral: true
             });
         }
@@ -549,6 +562,11 @@ client.on('interactionCreate', async interaction => {
         );
 
         await interaction.showModal(modal);
+
+        // Always reset the selection menu immediately so it is not stuck on 1 selection
+        await interaction.message.edit(createKeyGenPanel()).catch(err => {
+            console.error('Failed to reset select menu on interaction:', err.message);
+        });
         return;
     }
 
@@ -556,10 +574,11 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_keygen_')) {
         await interaction.deferReply({ ephemeral: true });
 
-        const isOwner = interaction.user.id === '1415022792214052915';
-        const isAdmin = interaction.member && interaction.member.permissions && interaction.member.permissions.has(PermissionFlagsBits.Administrator);
-        if (!isOwner && !isAdmin) {
-            return interaction.editReply({ content: 'Unauthorized.' });
+        const KEYGEN_ROLE_ID = config.keygen_role_id || '1565785004922110032';
+        if (!hasKeygenPermission(interaction)) {
+            return interaction.editReply({
+                content: `You do not have permission to generate license keys. Requires <@&${KEYGEN_ROLE_ID}>.`
+            });
         }
 
         const duration = interaction.customId.replace('modal_keygen_', '');
