@@ -55,6 +55,13 @@ server.listen(PORT, () => {
     console.log(`[Render Web Service] Health server listening on port ${PORT}`);
 });
 
+// Self-ping every 10 minutes to prevent sleep
+setInterval(() => {
+    fetch('https://udvengers-auth-bot.onrender.com')
+        .then(() => console.log('[Keep-Alive] 10m self-ping executed.'))
+        .catch(() => {});
+}, 10 * 60 * 1000);
+
 // Load or create subscription store
 function loadSubscriptions() {
     try {
