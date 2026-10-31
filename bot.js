@@ -152,6 +152,25 @@ function createKeyGenPanel() {
     return { embeds: [embed], components: [row] };
 }
 
+// 4. Panel: Server Verification (Purple Amethyst Brand)
+function createVerifyPanel() {
+    const embed = new EmbedBuilder()
+        .setColor(0xA855F7)
+        .setTitle('Verification Required')
+        .setDescription('Click the button below to authorize your Discord account and unlock access to the server.');
+
+    const verifyUrl = config.verify_url || 'https://larpifyy.asia/verify';
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setLabel('Verify')
+            .setStyle(ButtonStyle.Link)
+            .setURL(verifyUrl)
+    );
+
+    return { embeds: [embed], components: [row] };
+}
+
 function hasKeygenPermission(interaction) {
     const KEYGEN_ROLE_ID = config.keygen_role_id || '1565785004922110032';
     if (interaction.user.id === '1415022792214052915') return true;
@@ -186,6 +205,10 @@ client.once('ready', async () => {
         new SlashCommandBuilder()
             .setName('setup-keygen')
             .setDescription('Post the Admin Key Creation Panel')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        new SlashCommandBuilder()
+            .setName('setup-verify')
+            .setDescription('Post the Server Verification Panel')
             .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     ].map(cmd => cmd.toJSON());
 
@@ -272,6 +295,30 @@ client.once('ready', async () => {
                 await keygenChan.send(createKeyGenPanel());
                 console.log(`[Auto-Setup] Key Creation panel verified in #${keygenChan.name} (${keygenChan.id})`);
             }
+
+            // Setup Verification Channel (1551017201455210637)
+            const verifyChanId = config.verify_channel_id || '1551017201455210637';
+            let verifyChan = guild.channels.cache.get(verifyChanId);
+            if (!verifyChan) {
+                verifyChan = guild.channels.cache.find(c => 
+                    c.isTextBased() && (
+                        c.name.toLowerCase().includes('verify') ||
+                        c.name.toLowerCase().includes('verification')
+                    )
+                );
+            }
+
+            if (verifyChan && verifyChan.isTextBased()) {
+                const messages = await verifyChan.messages.fetch({ limit: 10 }).catch(() => null);
+                if (messages) {
+                    const oldMessages = messages.filter(m => m.author.id === client.user.id && m.embeds[0]?.title === 'Verification Required');
+                    for (const [, oldMsg] of oldMessages) {
+                        await oldMsg.delete().catch(() => null);
+                    }
+                }
+                await verifyChan.send(createVerifyPanel());
+                console.log(`[Auto-Setup] Verification panel verified in #${verifyChan.name} (${verifyChan.id})`);
+            }
         } catch (e) {
             console.error(`Error checking channels in guild ${guild.name}:`, e.message);
         }
@@ -299,6 +346,11 @@ client.on('interactionCreate', async interaction => {
         if (interaction.commandName === 'setup-keygen') {
             await interaction.reply({ content: 'Posting key creation panel...', ephemeral: true });
             await interaction.channel.send(createKeyGenPanel());
+            return;
+        }
+        if (interaction.commandName === 'setup-verify') {
+            await interaction.reply({ content: 'Posting verification panel...', ephemeral: true });
+            await interaction.channel.send(createVerifyPanel());
             return;
         }
     }

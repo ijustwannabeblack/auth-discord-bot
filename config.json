@@ -12,5 +12,8 @@
   "keygen_log_channel_id": "1565785987186032640",
   "api_endpoint": "https://larpifyy.asia/api/discord/redeem",
   "hwid_api_endpoint": "https://larpifyy.asia/api/discord/hwid-reset",
-  "generate_key_api_endpoint": "https://larpifyy.asia/api/discord/generate-key"
+  "generate_key_api_endpoint": "https://larpifyy.asia/api/discord/generate-key",
+  "verify_channel_id": "1551017201455210637",
+  "verified_role_id": "1550780294896812174",
+  "verify_url": "https://larpifyy.asia/verify"
 }
