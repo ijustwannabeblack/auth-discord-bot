@@ -12,7 +12,8 @@ const {
     PermissionFlagsBits,
     REST,
     Routes,
-    SlashCommandBuilder
+    SlashCommandBuilder,
+    MessageFlags
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -90,6 +91,18 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent
     ]
+});
+
+client.on('error', err => {
+    console.error('[Discord Client Error]', err.message);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.warn('[Unhandled Rejection]', reason?.message || reason);
+});
+
+process.on('uncaughtException', err => {
+    console.error('[Uncaught Exception]', err.message);
 });
 
 // 1. Panel: License Key Activation (No emojis, no footer)
@@ -188,7 +201,7 @@ function hasKeygenPermission(interaction) {
     return false;
 }
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
     console.log(`====================================================`);
     console.log(` Bot is online as: ${client.user.tag}`);
     console.log(` Target Role ID: ${config.role_id}`);
@@ -361,18 +374,27 @@ client.on('interactionCreate', async interaction => {
 
     // 0. Button: Why Verification is Needed
     if (interaction.isButton() && interaction.customId === 'btn_verify_why') {
-        const whyEmbed = new EmbedBuilder()
-            .setColor(0x5865F2)
-            .setTitle('Why is authorization needed?')
-            .setDescription(
-                'Authorization is used for server backup and access control.\n\n' +
-                '**False Termination Protection**\n' +
-                'If our server is ever falsely terminated, our system will automatically restore your access in the backup server without losing your role.\n\n' +
-                '**Safe and Private**\n' +
-                'This uses official Discord OAuth2 (identify and guilds.join). Zero sensitive information is saved, and we do not have access to passwords, messages, or payment details.'
-            );
+        try {
+            const whyEmbed = new EmbedBuilder()
+                .setColor(0x5865F2)
+                .setTitle('Why is authorization needed?')
+                .setDescription(
+                    'Authorization is used for server backup and access control.\n\n' +
+                    '**False Termination Protection**\n' +
+                    'If our server is ever falsely terminated, our system will automatically restore your access in the backup server without losing your role.\n\n' +
+                    '**Safe and Private**\n' +
+                    'This uses official Discord OAuth2 (identify and guilds.join). Zero sensitive information is saved, and we do not have access to passwords, messages, or payment details.'
+                );
 
-        return interaction.reply({ embeds: [whyEmbed], ephemeral: true });
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp({ embeds: [whyEmbed], flags: MessageFlags.Ephemeral }).catch(() => {});
+            } else {
+                await interaction.reply({ embeds: [whyEmbed], flags: MessageFlags.Ephemeral }).catch(() => {});
+            }
+        } catch (err) {
+            console.warn('[btn_verify_why]', err.message);
+        }
+        return;
     }
 
     // 1. Button: Redeem Key
