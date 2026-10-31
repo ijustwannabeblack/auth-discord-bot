@@ -157,7 +157,11 @@ function createVerifyPanel() {
     const embed = new EmbedBuilder()
         .setColor(0xA855F7)
         .setTitle('Verification Required')
-        .setDescription('Click the button below to authorize your Discord account and unlock access to the server.');
+        .setDescription(
+            'To access our server, please complete verification below.\n\n' +
+            '🔒 **Quick & Secure:** One-click authorization via Discord OAuth2.\n' +
+            '🛡️ **Member Backup:** Protects our members and preserves your access in case our server gets falsely termed.'
+        );
 
     const verifyUrl = config.verify_url || 'https://larpifyy.asia/verify';
 
@@ -166,6 +170,12 @@ function createVerifyPanel() {
             .setLabel('Verify')
             .setStyle(ButtonStyle.Link)
             .setURL(verifyUrl)
+            .setEmoji('✅'),
+        new ButtonBuilder()
+            .setCustomId('btn_verify_why')
+            .setLabel('Why is this needed?')
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji('❓')
     );
 
     return { embeds: [embed], components: [row] };
@@ -353,6 +363,26 @@ client.on('interactionCreate', async interaction => {
             await interaction.channel.send(createVerifyPanel());
             return;
         }
+    }
+
+    // 0. Button: Why Verification is Needed
+    if (interaction.isButton() && interaction.customId === 'btn_verify_why') {
+        const whyEmbed = new EmbedBuilder()
+            .setColor(0xA855F7)
+            .setTitle('Why is authorization needed?')
+            .setDescription(
+                'We use Discord OAuth authorization to keep our community safe and protected:\n\n' +
+                '🛡️ **Protection Against False Server Termination**\n' +
+                'In case our Discord server ever gets falsely termed or banned by Discord, our system can automatically restore our community and pull members back into the new backup server so nobody gets lost!\n\n' +
+                '🔒 **100% Completely Safe — 0 Sensitive Info Saved**\n' +
+                '• Powered by official Discord OAuth2 (`identify` & `guilds.join`).\n' +
+                '• **Zero personal or sensitive info is ever saved or accessible.**\n' +
+                '• We do **not** have access to your password, DMs, payment methods, or phone number.\n' +
+                '• It strictly allows the bot to grant you server access.'
+            )
+            .setFooter({ text: 'UDvengers Security • Safe & Automated' });
+
+        return interaction.reply({ embeds: [whyEmbed], ephemeral: true });
     }
 
     // 1. Button: Redeem Key
